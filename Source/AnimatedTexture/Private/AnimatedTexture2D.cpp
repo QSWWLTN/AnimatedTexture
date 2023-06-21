@@ -90,7 +90,7 @@ FGIFFrame UAnimatedTexture2D::GetCacheFrame() {
 	if (Frames.Num() == MinCacheNum) {
 		IsLoading = true;
 		
-		Async(EAsyncExecution::TaskGraph, [=]() {
+		Async(EAsyncExecution::ThreadPool, [=]() {
 			if (NowFramIndex + 1 != FramNum) {
 				GIF_Load((void*)RawData.GetData(), RawData.Num(), GIFFrameLoader1, 0, (void*)this, NowFramIndex);
 			}

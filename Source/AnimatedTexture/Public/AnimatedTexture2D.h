@@ -189,8 +189,8 @@ public:
 	uint8 Background = 0;	// 0-based background color index for the current palette
 	float Duration = 0.0f;
 
-	uint8 MaxCacheNum = 20;
-	uint8 MinCacheNum = 5;			//缓存中最少在多少帧的时候再次读取文件数据
+	uint8 MaxCacheNum = 50;
+	uint8 MinCacheNum = 20;			//缓存中最少在多少帧的时候再次读取文件数据
 	uint32 NowFramIndex = 0;		//实际播放到哪一帧
 	uint32 FramNum = 0;				//帧总数
 	bool IsStart = true;
