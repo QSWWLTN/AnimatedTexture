@@ -25,19 +25,18 @@ public class AnimatedTexture : ModuleRules
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core",
-				// ... add other public dependencies that you statically link with here ...
-			}
+                "Core",
+                "CoreUObject",
+                "Engine",
+                "RHI",
+                "RenderCore"
+            }
 			);
 			
 		
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject",
-				"Engine",
-				"RHI",
-                "RenderCore",
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

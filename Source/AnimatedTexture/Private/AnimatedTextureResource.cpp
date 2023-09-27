@@ -129,14 +129,17 @@ bool FAnimatedTextureResource::TickAnim(float DeltaTime)
 
 	// step to next frame
 	if (AnimState.FrameTime > FrameDelay) {
+
 		AnimState.CurrentFrame++;
+		Owner->NowFramIndex = AnimState.CurrentFrame;
+
 		AnimState.FrameTime -= FrameDelay;
 		NextFrame = true;
 
 		// loop
 		int NumFrame = Owner->GetFrameCount();
 		if (AnimState.CurrentFrame >= NumFrame)
-			AnimState.CurrentFrame = Owner->bLooping ? 0 : NumFrame - 1;
+			Owner->NowFramIndex = AnimState.CurrentFrame = Owner->bLooping ? 0 : NumFrame - 1;
 	}
 	if(NextFrame)
 	{
@@ -184,12 +187,14 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 		LastFrame = 0;
 
 		FColor BGColor(0L);
-		const FGIFFrame& GIFFrame = Owner->Frames[0];
-		if (!Owner->SupportsTransparency)
-			BGColor = GIFFrame.Palette[Owner->Background];
+		const FGIFFrame* GIFFrame = Owner->Frames[0];
+		if (!Owner->SupportsTransparency) {
+			BGColor = GIFFrame->Palette[Owner->Background];
+		}
 
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < 2; i++) {
 			FrameBuffer[i].Init(BGColor, Owner->GlobalHeight * Owner->GlobalWidth);
+		}
 	}
 
 	bool FirstFrame = AnimState.CurrentFrame == 0;
@@ -204,8 +209,6 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 
 	FColor* PICT = FrameBuffer[InLastFrame].GetData();
 	uint32 InBackground = Owner->Background;
-
-	TArray<FColor>& Pal = GIFFrame.Palette;
 
 	uint32 TexWidth = Texture2DRHI->GetSizeX();
 	uint32 TexHeight = Texture2DRHI->GetSizeY();
@@ -228,7 +231,7 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 				uint8 ColorIndex = GIFFrame.PixelIndices[Src];
 
 				if (ColorIndex != GIFFrame.TransparentIndex)
-					PICT[TexIndex] = Pal[ColorIndex];
+					PICT[TexIndex] = GIFFrame.Palette[ColorIndex];
 				else
 				{
 					int a = 0;
@@ -330,4 +333,6 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 		UE_LOG(LogAnimTexture, Warning, TEXT("Unknown GIF Mode"));
 		break;
 	}//end of switch
+
+	free(GIFFrame.PixelIndices);
 }

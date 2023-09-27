@@ -15,6 +15,8 @@
 #include "Tickable.h"	// Engine
 #include "Engine/Texture.h"	// Engine
 
+#include "lz4.h"
+
 #include "AnimatedTexture2D.generated.h"
 
 class FAnimatedTextureResource;
@@ -25,28 +27,21 @@ struct FGIFFrame
 {
 	GENERATED_BODY()
 public:
-	UPROPERTY()
-		float Time;	// next frame delay in sec
-	UPROPERTY()
-		uint32 Index;	// 0-based index of the current frame
-	UPROPERTY()
-		uint32 Width;	// current frame width
-	UPROPERTY()
-		uint32 Height;	// current frame height
-	UPROPERTY()
-		uint32 OffsetX;	// current frame horizontal offset
-	UPROPERTY()
-		uint32 OffsetY;	// current frame vertical offset
-	UPROPERTY()
-		bool Interlacing;	// see: https://en.wikipedia.org/wiki/GIF#Interlacing
-	UPROPERTY()
-		uint8 Mode;	// next frame (sic next, not current) blending mode
-	UPROPERTY()
-		int16 TransparentIndex;	// 0-based transparent color index (or −1 when transparency is disabled)
-	UPROPERTY()
-		TArray<uint8> PixelIndices;	// pixel indices for the current frame
-	UPROPERTY()
-		TArray<FColor> Palette;	// the current palette
+	float Time;	// next frame delay in sec
+	uint32 Index;	// 0-based index of the current frame
+	uint32 Width;	// current frame width
+	uint32 Height;	// current frame height
+	uint32 OffsetX;	// current frame horizontal offset
+	uint32 OffsetY;	// current frame vertical offset
+	bool Interlacing;	// see: https://en.wikipedia.org/wiki/GIF#Interlacing
+	uint8 Mode;	// next frame (sic next, not current) blending mode
+	int16 TransparentIndex;	// 0-based transparent color index (or −1 when transparency is disabled)
+
+	uint8* PixelIndices = nullptr;
+	uint64 PixelIndicesSize = 0;
+	uint64 CompPixelIndicesSize = 0;
+
+	TArray<FColor> Palette;
 
 	FGIFFrame() :Time(0), Index(0), Width(0), Height(0), OffsetX(0), OffsetY(0),
 		Interlacing(false), Mode(0), TransparentIndex(-1)
@@ -77,7 +72,7 @@ public:
 		bool SupportsTransparency = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AnimatedTexture)
-		float DefaultFrameDelay = 1.0f / 60;
+		float DefaultFrameDelay = 1.0f / 24.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AnimatedTexture)
 		float PlayRate = 1.0f;
@@ -189,13 +184,11 @@ public:
 	uint8 Background = 0;	// 0-based background color index for the current palette
 	float Duration = 0.0f;
 
-	uint8 MaxCacheNum = 50;
-	uint8 MinCacheNum = 20;			//缓存中最少在多少帧的时候再次读取文件数据
 	uint32 NowFramIndex = 0;		//实际播放到哪一帧
 	uint32 FramNum = 0;				//帧总数
 	bool IsStart = true;
 	bool IsLoading = false;
-	TArray<FGIFFrame> Frames;
+	TMap<uint64, FGIFFrame*> Frames;
 
 	UPROPERTY()
 	TArray<uint8> RawData;

@@ -1,17 +1,12 @@
-// Copyright 2019 Neil Fang. All Rights Reserved.
-
 #include "AnimatedTexture2D.h"
 #include "AnimatedTextureResource.h"
-#include "gif_load/gif_load.h" // from: https://github.com/hidefromkgb/gif_load
+#include "gif_load/gif_load.h"
 
 bool isGifData(const void* data) {
 	return FMemory::Memcmp(data, "GIF", 3) == 0;
 }
 
-
-//ANIMATEDTEXTURE_API bool LoadGIFBinary(UAnimatedTexture2D* OutGIF, const uint8* Buffer, uint32 BufferSize);
-
-void GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
+void ANIMATEDTEXTURE_API GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
 {
 	UAnimatedTexture2D* OutGIF = (UAnimatedTexture2D*)data;
 
@@ -19,7 +14,6 @@ void GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
 		OutGIF->Duration += whdr->time >= 0 ? whdr->time * 0.01f : (-whdr->time - 1) * 0.01f;
 	}
 
-	//-- init on first frame
 	if (OutGIF->GetFrameCount() == 0) {
 		OutGIF->Import_Init(whdr->xdim, whdr->ydim, whdr->bkgd, whdr->nfrm);
 	}
@@ -28,87 +22,82 @@ void GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
 		OutGIF->FramNum++;
 	}
 
-	if (OutGIF->Frames.Num() >= OutGIF->MaxCacheNum) {
-		return;
-	}
-
-	//-- import frame
 	int FrameIndex = whdr->ifrm;
 
-	/*
-	check(OutGIF->GetFrameCount() == whdr->nfrm);
-	check(FrameIndex >= 0 && FrameIndex < OutGIF->GetFrameCount());
-	*/
+	FGIFFrame* Frame = (FGIFFrame*)calloc(1, sizeof(FGIFFrame));
+	check(Frame);
 
-	FGIFFrame Frame;
-
-	//-- copy properties
 	if (whdr->time >= 0)
-		Frame.Time = whdr->time * 0.01f;	// 1 GIF time units = 10 msec
+		Frame->Time = whdr->time * 0.01f;
 	else
-		Frame.Time = (-whdr->time - 1) * 0.01f;
+		Frame->Time = (-whdr->time - 1) * 0.01f;
 
-	/** [TODO:] the frame is assumed to be inside global bounds,
-			however it might exceed them in some GIFs; fix me. **/
-	Frame.Index = whdr->ifrm;
-	Frame.Width = whdr->frxd;
-	Frame.Height = whdr->fryd;
-	Frame.OffsetX = whdr->frxo;
-	Frame.OffsetY = whdr->fryo;
-	Frame.Interlacing = whdr->intr != 0;
-	Frame.Mode = whdr->mode;
-	Frame.TransparentIndex = whdr->tran;
+	Frame->Index = whdr->ifrm;
+	Frame->Width = whdr->frxd;
+	Frame->Height = whdr->fryd;
+	Frame->OffsetX = whdr->frxo;
+	Frame->OffsetY = whdr->fryo;
+	Frame->Interlacing = whdr->intr != 0;
+	Frame->Mode = whdr->mode;
+	Frame->TransparentIndex = whdr->tran;
 
-	//-- copy pixel data
-	int NumPixel = Frame.Width * Frame.Height;
-	Frame.PixelIndices.SetNumUninitialized(NumPixel);
-	FMemory::Memcpy(Frame.PixelIndices.GetData(), whdr->bptr, NumPixel);
+	int NumPixel = Frame->Width * Frame->Height;
+	Frame->PixelIndicesSize = NumPixel;
 
-	//-- copy pal
+	int32 MaxCompSize = LZ4_compressBound(NumPixel);
+	Frame->PixelIndices = (uint8*)calloc(MaxCompSize, sizeof(uint8));
+
+	Frame->CompPixelIndicesSize = LZ4_compress_default((char*)whdr->bptr, (char*)Frame->PixelIndices, NumPixel, MaxCompSize);
+	UE_LOG(LogTexture, Log, TEXT("NotCompressSize: %d CompressSize: %d"), NumPixel, Frame->CompPixelIndicesSize);
+
 	int PaletteSize = whdr->clrs;
-	Frame.Palette.Init(FColor(0, 0, 0, 255), PaletteSize);
+	Frame->Palette.Init(FColor(0, 0, 0, 255), PaletteSize);
 	for (int i = 0; i < PaletteSize; i++)
 	{
-		FColor& uc = Frame.Palette[i];
+		FColor& uc = Frame->Palette[i];
 		uc.R = whdr->cpal[i].R;
 		uc.G = whdr->cpal[i].G;
 		uc.B = whdr->cpal[i].B;
 	}// end of for
 
-	OutGIF->Frames.Add(Frame);
 	OutGIF->NowFramIndex = FrameIndex;
+	OutGIF->Frames.Add(FrameIndex, Frame);
 }
 
 FGIFFrame UAnimatedTexture2D::GetCacheFrame() {
-	FGIFFrame T = Frames[0];
+	if (Frames.Contains(NowFramIndex)) {
 
-	//假定是按统一速度播放
-	DefaultFrameDelay = T.Time;
-	Frames.RemoveAt(0);
-
-	//需要想办法优化加载速度
-	if (Frames.Num() == MinCacheNum) {
-		IsLoading = true;
+		FGIFFrame Frame;
+		FGIFFrame* T = Frames[NowFramIndex];
 		
-		Async(EAsyncExecution::ThreadPool, [=]() {
-			if (NowFramIndex + 1 != FramNum) {
-				GIF_Load((void*)RawData.GetData(), RawData.Num(), GIFFrameLoader1, 0, (void*)this, NowFramIndex);
-			}
-			else {
-				NowFramIndex = 0;
-				GIF_Load((void*)RawData.GetData(), RawData.Num(), GIFFrameLoader1, 0, (void*)this, 0);
-			}
-		}, [&]() {
-			IsLoading = false;
-		});
+		Frame.Time = T->Time;
+		Frame.Index = T->Index;
+		Frame.Width = T->Width;
+		Frame.Height = T->Height;
+		Frame.OffsetX = T->OffsetX;
+		Frame.OffsetY = T->OffsetY;
+		Frame.Interlacing = T->Interlacing;
+		Frame.Mode = T->Mode;
+		Frame.TransparentIndex = T->TransparentIndex;
+		Frame.Palette = T->Palette;
+
+		Frame.PixelIndicesSize = T->PixelIndicesSize;
+		Frame.CompPixelIndicesSize = T->CompPixelIndicesSize;
+
+		uint64 MaxSize = LZ4_compressBound(T->PixelIndicesSize) * 4;
+		uint8* PixelIndices = (uint8*)calloc(MaxSize, sizeof(uint8));
+		int32 Temp = LZ4_decompress_safe((char*)T->PixelIndices, (char*)PixelIndices, T->CompPixelIndicesSize, MaxSize);
+
+		UE_LOG(LogTexture, Log, TEXT("%d"), Temp);
+
+		Frame.PixelIndices = PixelIndices;
+
+		return Frame;
 	}
-	return T;
+	return FGIFFrame();
 }
 
 float UAnimatedTexture2D::GetCacheFrameDelay() {
-	if (Frames.Num() != 0) {
-		return Frames[0].Time;
-	}
 	return DefaultFrameDelay;
 }
 
@@ -154,7 +143,7 @@ void UAnimatedTexture2D::PostEditChangeProperty(FPropertyChangedEvent & Property
 	bool RequiresNotifyMaterials = false;
 	bool ResetAnimState = false;
 
-	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	if (PropertyThatChanged)
 	{
 		const FName PropertyName = PropertyThatChanged->GetFName();
@@ -166,37 +155,12 @@ void UAnimatedTexture2D::PostEditChangeProperty(FPropertyChangedEvent & Property
 			RequiresNotifyMaterials = true;
 			ResetAnimState = true;
 		}
-	}// end of if(prop is valid)
-
-	if (ResetAnimState)
-	{
-		//AnimState = FAnmatedTextureState();
-		//AnimSource->DecodeFrameToRHI(Resource, AnimState, SupportsTransparency);
 	}
 
 	if (RequiresNotifyMaterials)
 		NotifyMaterials();
 }
-#endif // WITH_EDITOR
-
-/*
-void UAnimatedTexture2D::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
-{
-	Super::GetResourceSizeEx(CumulativeResourceSize);
-
-	//if (CumulativeResourceSize.GetResourceSizeMode() == EResourceSizeMode::Exclusive)
-	{
-		CumulativeResourceSize.AddDedicatedSystemMemoryBytes(Frames.GetAllocatedSize());
-
-		for (auto& Frame: Frames)
-		{
-			CumulativeResourceSize.AddDedicatedSystemMemoryBytes(Frame.Palette.GetAllocatedSize());
-			CumulativeResourceSize.AddDedicatedSystemMemoryBytes(Frame.PixelIndices.GetAllocatedSize());
-		}
-	}
-}
-*/
-
+#endif
 
 float UAnimatedTexture2D::GetAnimationLength() const
 {
@@ -204,7 +168,7 @@ float UAnimatedTexture2D::GetAnimationLength() const
 }
 
 
-UAnimatedTexture2D::UAnimatedTexture2D(const FObjectInitializer& ObjectInitializer /*= FObjectInitializer::Get()*/)
+UAnimatedTexture2D::UAnimatedTexture2D(const FObjectInitializer& ObjectInitializer)
 :Super(ObjectInitializer)
 {
 
@@ -219,6 +183,13 @@ void UAnimatedTexture2D::PostLoad()
 void UAnimatedTexture2D::BeginDestroy() 
 {
 	Super::BeginDestroy();
+
+	for (auto& Data : Frames) {
+		if (Data.Value->PixelIndices != nullptr) {
+			free(Data.Value->PixelIndices);
+		}
+		free(Data.Value);
+	}
 }
 
 bool UAnimatedTexture2D::ImportGIF(const uint8* Buffer, uint32 BufferSize)
@@ -227,6 +198,8 @@ bool UAnimatedTexture2D::ImportGIF(const uint8* Buffer, uint32 BufferSize)
 	Frames.Empty();
 	RawData.SetNumUninitialized(BufferSize);
 	FMemory::Memcpy(RawData.GetData(), Buffer, BufferSize);
+
+	GIF_Load((void*)RawData.GetData(), RawData.Num(), GIFFrameLoader1, 0, (void*)this, NowFramIndex);
 
 	return ParseRawData();
 }
@@ -237,7 +210,6 @@ void UAnimatedTexture2D::Import_Init(uint32 InGlobalWidth, uint32 InGlobalHeight
 	GlobalHeight = InGlobalHeight;
 	Background = InBackground;
 
-	//Frames.SetNum(MaxCacheNum);
 	FrameNum = InFrameCount;
 }
 
