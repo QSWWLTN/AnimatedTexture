@@ -1,21 +1,14 @@
-/**
- * Copyright 2019 Neil Fang. All Rights Reserved.
- *
- * Animated Texture from GIF file
- *
- * Created by Neil Fang
- * GitHub Repo: https://github.com/neil3d/UnrealAnimatedTexturePlugin
- * GitHub Page: http://neil3d.github.io
- *
-*/
-
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Tickable.h"	// Engine
-#include "Engine/Texture.h"	// Engine
+#include "Tickable.h"
+#include "Engine/Texture.h"
 
-#include "lz4.h"
+#if UE_BUILD_SHIPPING
+	#include "Compression/lz4.h"
+#else
+	#include "TraceLog/Private/Trace/LZ4/lz4.c.inl"
+#endif
 
 #include "AnimatedTexture2D.generated.h"
 
@@ -49,9 +42,6 @@ public:
 };
 
 
-/**
- *
- */
 UCLASS(BlueprintType, Category = AnimatedTexture, hideCategories = (Adjustments, Compression, LevelOfDetail))
 class ANIMATEDTEXTURE_API UAnimatedTexture2D : public UTexture
 {
@@ -155,24 +145,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = AnimatedTexture)
 		float GetAnimationLength() const;
 
-	//~ Begin UTexture Interface.
 	virtual float GetSurfaceWidth() const override;
 	virtual float GetSurfaceHeight() const override;
 	virtual FTextureResource* CreateResource() override;
 	virtual EMaterialValueType GetMaterialType() const override { return MCT_Texture2D; }
 	virtual uint32 CalcTextureMemorySizeEnum(ETextureMipCount Enum) const override;
 
-
-	//~ End UTexture Interface.
-
-
-	//~ Begin UObject Interface.
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-#endif // WITH_EDITOR
-	//virtual void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) override;
-	
-	//~ End UObject Interface.
+#endif
 
 protected:
 	UPROPERTY()
@@ -181,7 +162,7 @@ protected:
 public:
 	uint32 GlobalWidth = 0;
 	uint32 GlobalHeight = 0;
-	uint8 Background = 0;	// 0-based background color index for the current palette
+	uint8 Background = 0;
 	float Duration = 0.0f;
 
 	uint32 NowFramIndex = 0;		//实际播放到哪一帧
@@ -192,4 +173,7 @@ public:
 
 	UPROPERTY()
 	TArray<uint8> RawData;
+
+	uint64 NotCompSize = 0;
+	uint64 CompSize = 0;
 };

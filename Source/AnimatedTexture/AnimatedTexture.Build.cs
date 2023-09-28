@@ -1,5 +1,7 @@
 // Copyright 2019 Neil Fang. All Rights Reserved.
 
+using System.IO;
+using EpicGames.Core;
 using UnrealBuildTool;
 
 public class AnimatedTexture : ModuleRules
@@ -13,15 +15,16 @@ public class AnimatedTexture : ModuleRules
 				// ... add public include paths required here ...
 			}
 			);
-				
-		
+
+
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				// ... add other private include paths required here ...
+				Path.Combine(DirectoryReference.GetCurrentDirectory().ToString(), "Runtime/TraceLog/Private")
 			}
 			);
-			
-		
+
+		AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib");
+
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{

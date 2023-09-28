@@ -17,40 +17,12 @@ LastFrame(0)
 {
 }
 
-uint32 FAnimatedTextureResource::GetSizeX() const
-{
-	if (Owner)
-	{
-		return Owner->GlobalWidth;
-	}
-	else
-	{
-		return 2;
-	}
-	
-}
-
-uint32 FAnimatedTextureResource::GetSizeY() const
-{
-	if (Owner)
-	{
-		return Owner->GlobalHeight;
-	}
-	else
-	{
-		return 2;
-	}
-}
-
 void FAnimatedTextureResource::InitRHI()
 {
-	//-- create FSamplerStateRHIRef FTexture::SamplerStateRHI
 	CreateSamplerStates(
 		GetDefaultMipMapBias()
 	);
 
-	//-- create FTextureRHIRef FTexture::TextureRHI
-	//uint32 TexCreateFlags = Owner->SRGB ? TexCreate_SRGB : 0;
 	uint32 Flags = Owner->SRGB ? (int32)TexCreate_SRGB : 0;
 	uint32 NumMips = 1;
 	uint32 NumSamples = 1;
@@ -58,26 +30,6 @@ void FAnimatedTextureResource::InitRHI()
 	FRHIResourceCreateInfo CreateInfo(TEXT(""));
 	TextureRHI = RHICreateTexture2D(FMath::Max(GetSizeX(),1u), FMath::Max(GetSizeY(), 1u), (uint8)PF_B8G8R8A8, NumMips, NumSamples, (ETextureCreateFlags)Flags, CreateInfo);
 	TextureRHI->SetName(Owner->GetFName());
-
-	//TRefCountPtr<FRHITexture2D> ShaderTexture2D;
-	//TRefCountPtr<FRHITexture2D> RenderableTexture;
-	//FRHIResourceCreateInfo CreateInfo = { FClearValueBinding(FLinearColor(0.0f, 0.0f, 0.0f)) };
-
-	//RHICreateTargetableShaderResource2D(
-	//	GetSizeX(),
-	//	GetSizeY(),
-	//	PF_B8G8R8A8,
-	//	1,
-	//	TexCreate_None,
-	//	TexCreate_RenderTargetable,
-	//	false,
-	//	CreateInfo,
-	//	RenderableTexture,
-	//	ShaderTexture2D
-	//);
-
-
-
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, TextureRHI);
 
@@ -122,7 +74,6 @@ bool FAnimatedTextureResource::TickAnim(float DeltaTime)
 	float FrameDelay = Owner->GetFrameDelay();
 	AnimState.FrameTime += DeltaTime;
 
-	//小于1秒24帧的话强制改为24帧
 	if (FrameDelay > 1.f / 24.f) {
 		FrameDelay = 1.f / 24.f;
 	}

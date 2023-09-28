@@ -48,7 +48,9 @@ void ANIMATEDTEXTURE_API GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
 	Frame->PixelIndices = (uint8*)calloc(MaxCompSize, sizeof(uint8));
 
 	Frame->CompPixelIndicesSize = LZ4_compress_default((char*)whdr->bptr, (char*)Frame->PixelIndices, NumPixel, MaxCompSize);
-	UE_LOG(LogTexture, Log, TEXT("NotCompressSize: %d CompressSize: %d"), NumPixel, Frame->CompPixelIndicesSize);
+
+	OutGIF->NotCompSize += NumPixel;
+	OutGIF->CompSize += Frame->CompPixelIndicesSize;
 
 	int PaletteSize = whdr->clrs;
 	Frame->Palette.Init(FColor(0, 0, 0, 255), PaletteSize);
@@ -69,6 +71,10 @@ FGIFFrame UAnimatedTexture2D::GetCacheFrame() {
 
 		FGIFFrame Frame;
 		FGIFFrame* T = Frames[NowFramIndex];
+
+		if (T == nullptr || T->PixelIndices == nullptr) {
+			return FGIFFrame();
+		}
 		
 		Frame.Time = T->Time;
 		Frame.Index = T->Index;
@@ -87,8 +93,6 @@ FGIFFrame UAnimatedTexture2D::GetCacheFrame() {
 		uint64 MaxSize = LZ4_compressBound(T->PixelIndicesSize) * 4;
 		uint8* PixelIndices = (uint8*)calloc(MaxSize, sizeof(uint8));
 		int32 Temp = LZ4_decompress_safe((char*)T->PixelIndices, (char*)PixelIndices, T->CompPixelIndicesSize, MaxSize);
-
-		UE_LOG(LogTexture, Log, TEXT("%d"), Temp);
 
 		Frame.PixelIndices = PixelIndices;
 
@@ -187,8 +191,10 @@ void UAnimatedTexture2D::BeginDestroy()
 	for (auto& Data : Frames) {
 		if (Data.Value->PixelIndices != nullptr) {
 			free(Data.Value->PixelIndices);
+			Data.Value->PixelIndices = nullptr;
 		}
 		free(Data.Value);
+		Data.Value = nullptr;
 	}
 }
 
@@ -200,6 +206,8 @@ bool UAnimatedTexture2D::ImportGIF(const uint8* Buffer, uint32 BufferSize)
 	FMemory::Memcpy(RawData.GetData(), Buffer, BufferSize);
 
 	GIF_Load((void*)RawData.GetData(), RawData.Num(), GIFFrameLoader1, 0, (void*)this, NowFramIndex);
+
+	UE_LOG(LogTexture, Error, TEXT("Texture: %s, NotCompSize: %d, CompSize: %d"), *GetName(), NotCompSize, CompSize);
 
 	return ParseRawData();
 }
