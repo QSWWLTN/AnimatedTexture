@@ -4,9 +4,10 @@
 #include "Tickable.h"
 #include "Engine/Texture.h"
 
-#if UE_BUILD_SHIPPING
+#if !WITH_EDITOR
 	#include "Compression/lz4.h"
 #else
+	#include "Compression/lz4.h"
 	#include "TraceLog/Private/Trace/LZ4/lz4.c.inl"
 #endif
 
