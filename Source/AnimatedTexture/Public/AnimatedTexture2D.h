@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Tickable.h"
@@ -84,6 +84,7 @@ public:
 
 	virtual void BeginDestroy() override;
 
+	void OpenGIF();
 	bool ImportGIF(const uint8* Buffer, uint32 BufferSize);
 
 	void ResetToInVaildGif()
@@ -96,7 +97,7 @@ public:
 		FrameNum = 0;
 	}
 
-	void Import_Init(uint32 InGlobalWidth, uint32 InGlobalHeight, uint8 InBackground, uint32 InFrameCount);
+	void Import_Init(uint32 InGlobalWidth, uint32 InGlobalHeight);
 
 	int GetFrameCount() const
 	{ 
