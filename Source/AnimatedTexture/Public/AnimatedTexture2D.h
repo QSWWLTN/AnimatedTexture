@@ -5,10 +5,12 @@
 #include "Engine/Texture.h"
 
 #if !WITH_EDITOR
-	#include "Compression/lz4.h"
+#include "Compression/lz4.h"
 #else
-	#include "Compression/lz4.h"
-	#include "TraceLog/Private/Trace/LZ4/lz4.c.inl"
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 2
+#include "Compression/lz4.h"
+#endif
+#include "TraceLog/Private/Trace/LZ4/lz4.c.inl"
 #endif
 
 #include "AnimatedTexture2D.generated.h"
@@ -31,17 +33,16 @@ public:
 	uint8 Mode;	// next frame (sic next, not current) blending mode
 	int16 TransparentIndex;	// 0-based transparent color index (or −1 when transparency is disabled)
 
-	uint8* PixelIndices = nullptr;
+	uint8** PixelIndices = nullptr;
 	uint64 PixelIndicesSize = 0;
-	uint64 CompPixelIndicesSize = 0;
 
+	TArray<uint64> CompPixelIndicesSize;
 	TArray<FColor> Palette;
 
 	FGIFFrame() :Time(0), Index(0), Width(0), Height(0), OffsetX(0), OffsetY(0),
 		Interlacing(false), Mode(0), TransparentIndex(-1)
 	{}
 };
-
 
 UCLASS(BlueprintType, Category = AnimatedTexture, hideCategories = (Adjustments, Compression, LevelOfDetail))
 class ANIMATEDTEXTURE_API UAnimatedTexture2D : public UTexture
@@ -97,6 +98,7 @@ public:
 		FrameNum = 0;
 	}
 
+	void Import_Init(uint32 InGlobalWidth, uint32 InGlobalHeight, uint8 InBackground, uint32 InFrameCount);
 	void Import_Init(uint32 InGlobalWidth, uint32 InGlobalHeight);
 
 	int GetFrameCount() const

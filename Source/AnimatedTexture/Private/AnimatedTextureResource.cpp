@@ -7,7 +7,9 @@
 #include "DeviceProfiles/DeviceProfile.h"	// Engine
 #include "DeviceProfiles/DeviceProfileManager.h"	// Engine
 
+/*
 #include "gif_load/gif_load.h" // from: https://github.com/hidefromkgb/gif_load
+*/
 
 
 FAnimatedTextureResource::FAnimatedTextureResource(UAnimatedTexture2D * InOwner) 
@@ -17,7 +19,11 @@ LastFrame(0)
 {
 }
 
-void FAnimatedTextureResource::InitRHI()
+void FAnimatedTextureResource::InitRHI(
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 3
+	FRHICommandListBase&
+#endif
+)
 {
 	CreateSamplerStates(
 		GetDefaultMipMapBias()
@@ -28,7 +34,19 @@ void FAnimatedTextureResource::InitRHI()
 	uint32 NumSamples = 1;
 
 	FRHIResourceCreateInfo CreateInfo(TEXT(""));
-	TextureRHI = RHICreateTexture2D(FMath::Max(GetSizeX(),1u), FMath::Max(GetSizeY(), 1u), (uint8)PF_B8G8R8A8, NumMips, NumSamples, (ETextureCreateFlags)Flags, CreateInfo);
+	TextureRHI = RHICreateTexture(
+		FRHITextureCreateDesc::Create2D(CreateInfo.DebugName)
+		.SetExtent((int32)FMath::Max(GetSizeX(), 1u), (int32)FMath::Max(GetSizeY(), 1u))
+		.SetFormat((EPixelFormat)(uint8)PF_B8G8R8A8)
+		.SetNumMips((uint8)NumMips)
+		.SetNumSamples((uint8)NumSamples)
+		.SetFlags((ETextureCreateFlags)Flags)
+		.SetInitialState(ERHIAccess::Unknown)
+		.SetExtData(CreateInfo.ExtData)
+		.SetBulkData(CreateInfo.BulkData)
+		.SetGPUMask(CreateInfo.GPUMask)
+		.SetClearValue(CreateInfo.ClearValueBinding)
+	);
 	TextureRHI->SetName(Owner->GetFName());
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, TextureRHI);
@@ -134,6 +152,8 @@ void FAnimatedTextureResource::CreateSamplerStates(float MipMapBias)
 
 void FAnimatedTextureResource::DecodeFrameToRHI()
 {
+	LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::RHITexture));
+
 	if (FrameBuffer[0].Num() != Owner->GlobalHeight * Owner->GlobalWidth) {
 		LastFrame = 0;
 
@@ -165,6 +185,7 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	uint32 TexHeight = Texture2DRHI->GetSizeY();
 
 	//-- decode to frame buffer
+	/*
 	uint32 DDest = TexWidth * GIFFrame.OffsetY + GIFFrame.OffsetX;
 	uint32 Src = 0;
 	uint32 Iter = GIFFrame.Interlacing ? 0 : 4;
@@ -193,6 +214,22 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 			}// end of for(x)
 		}// end of for(y)
 	}// end of for(iter)
+	*/
+
+	for (uint32 Y = 0; Y < GIFFrame.Height; Y++) {
+		for (uint32 X = 0; X < GIFFrame.Width; X++) {
+
+			uint64 TexIndex = GIFFrame.Width * Y + X;
+
+			if (X < GIFFrame.Width && Y < GIFFrame.Height) {
+
+				uint8 TexColorIndex = GIFFrame.PixelIndices[Y][X];
+				if (GIFFrame.Palette.IsValidIndex(TexColorIndex) && TexColorIndex != GIFFrame.TransparentIndex) {
+					PICT[TexIndex] = GIFFrame.Palette[TexColorIndex];
+				}
+			}
+		}
+	}
 
 	//-- write texture
 	uint32 DestPitch = 0;
@@ -230,17 +267,17 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	}// end of else
 
 	//-- frame blending
-	EGIF_Mode Mode = (EGIF_Mode)GIFFrame.Mode;
+	int32 Mode = GIFFrame.Mode;
 
-	if (Mode == GIF_PREV && FirstFrame)	// loop restart
-		Mode = GIF_BKGD;
+	if (Mode == 3 && FirstFrame)	// loop restart
+		Mode = 2;
 
 	switch (Mode)
 	{
-	case GIF_NONE:
-	case GIF_CURR:
+	case 0:
+	case 1:
 		break;
-	case GIF_BKGD:	// restore background
+	case 2:	// restore background
 	{
 		FColor BGColor(0L);
 
@@ -259,25 +296,23 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 
 		uint32 BGWidth = GIFFrame.Width;
 		uint32 BGHeight = GIFFrame.Height;
-		uint32 XDest = DDest;
 
 		if (FirstFrame)
 		{
 			BGWidth = TexWidth;
 			BGHeight = TexHeight;
-			XDest = 0;
 		}
 
 		for (uint32 Y = 0; Y < BGHeight; Y++)
 		{
 			for (uint32 X = 0; X < BGWidth; X++)
 			{
-				PICT[TexWidth * Y + X + XDest] = BGColor;
+				PICT[TexWidth * Y + X] = BGColor;
 			}// end of for(x)
 		}// end of for(y)
 	}
 	break;
-	case GIF_PREV:	// restore prevous frame
+	case 3:	// restore prevous frame
 		InLastFrame = (InLastFrame + 1) % 2;
 		break;
 	default:
@@ -285,5 +320,8 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 		break;
 	}//end of switch
 
-	free(GIFFrame.PixelIndices);
+	for (uint32 i = 0; i < GIFFrame.Height; i++) {
+		FMemory::Free(GIFFrame.PixelIndices[i]);
+	}
+	FMemory::Free(GIFFrame.PixelIndices);
 }

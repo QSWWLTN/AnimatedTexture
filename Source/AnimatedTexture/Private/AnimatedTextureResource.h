@@ -19,7 +19,12 @@ public:
 
 	virtual uint32 GetSizeX() const override { return Owner ? Owner->GlobalWidth : 2; };
 	virtual uint32 GetSizeY() const override { return Owner ? Owner->GlobalHeight : 2; };
-	virtual void InitRHI() override;
+	virtual void InitRHI(
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 3
+		FRHICommandListBase& RHICmdList
+#endif
+	) override;
+
 	virtual void ReleaseRHI() override;
 
 	virtual void Tick(float DeltaTime) override;
@@ -44,6 +49,6 @@ private:
 private:
 	UAnimatedTexture2D* Owner;
 	FAnmatedTextureState AnimState;
-	TArray<FColor>	FrameBuffer[2];
+	TArray<FColor> FrameBuffer[2];
 	uint32 LastFrame;
 };

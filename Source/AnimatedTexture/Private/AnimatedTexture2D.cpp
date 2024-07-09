@@ -1,6 +1,10 @@
 ﻿#include "AnimatedTexture2D.h"
 #include "AnimatedTextureResource.h"
+
+#include "AnimatedTextureModule.h"
+/*
 #include "gif_load/gif_load.h"
+*/
 
 #include "GifLib/gif_lib.h"
 
@@ -32,12 +36,19 @@ FGIFFrame UAnimatedTexture2D::GetCacheFrame() {
 		Frame.PixelIndicesSize = T->PixelIndicesSize;
 		Frame.CompPixelIndicesSize = T->CompPixelIndicesSize;
 
-		uint64 MaxSize = LZ4_compressBound(T->PixelIndicesSize) * 4;
-		uint8* PixelIndices = (uint8*)calloc(MaxSize, sizeof(uint8));
-		LZ4_decompress_safe((char*)T->PixelIndices, (char*)PixelIndices, T->CompPixelIndicesSize, MaxSize);
+		Frame.PixelIndices = T->PixelIndices;
 
+		uint8** PixelIndices = (uint8**)FMemory::Malloc(T->Height * sizeof(uint8*));
+		for (uint32 i = 0; i < T->Height; i++) {
+			uint64 MaxSize = LZ4_compressBound(T->Width);
+
+			PixelIndices[i] = (uint8*)FMemory::Malloc(MaxSize * sizeof(uint8));
+			memset(PixelIndices[i], 0, MaxSize * sizeof(uint8));
+
+			LZ4_decompress_safe((char*)T->PixelIndices[i], (char*)PixelIndices[i], T->CompPixelIndicesSize[i], MaxSize);
+		}
+		
 		Frame.PixelIndices = PixelIndices;
-
 		return Frame;
 	}
 	return FGIFFrame();
@@ -132,10 +143,15 @@ void UAnimatedTexture2D::BeginDestroy()
 
 	for (auto& Data : Frames) {
 		if (Data.Value->PixelIndices != nullptr) {
-			free(Data.Value->PixelIndices);
+
+			for (uint32 i = 0; i < Data.Value->Height; i++) {
+				FMemory::Free(Data.Value->PixelIndices[i]);
+			}
+
+			FMemory::Free(Data.Value->PixelIndices);
 			Data.Value->PixelIndices = nullptr;
 		}
-		free(Data.Value);
+		FMemory::Free(Data.Value);
 		Data.Value = nullptr;
 	}
 }
@@ -147,25 +163,30 @@ struct GifData {
 };
 
 int32 ANIMATEDTEXTURE_API InternalRead_Mem(GifFileType* gif, GifByteType* buf, int len) {
-	if (len == 0)
+	if (len == 0) {
 		return 0;
+	}
 
 	GifData* pData = (GifData*)gif->UserData;
-	if (pData->m_nPosition > pData->m_nBufferSize)
+	if (pData->m_nPosition > pData->m_nBufferSize) {
 		return 0;
+	}
 
-	UINT nRead;
-	if (pData->m_nPosition + len > pData->m_nBufferSize || pData->m_nPosition + len < pData->m_nPosition)
-		nRead = (UINT)(pData->m_nBufferSize - pData->m_nPosition);
-	else
+	uint32 nRead;
+	if (pData->m_nPosition + len > pData->m_nBufferSize || pData->m_nPosition + len < pData->m_nPosition) {
+		nRead = (uint32)(pData->m_nBufferSize - pData->m_nPosition);
+	}
+	else {
 		nRead = len;
+	}
 
-	memcpy((BYTE*)buf, (BYTE*)pData->m_lpBuffer + pData->m_nPosition, nRead);
+	memcpy((char*)buf, (char*)pData->m_lpBuffer + pData->m_nPosition, nRead);
 	pData->m_nPosition += nRead;
 
 	return nRead;
 }
 
+/*
 void ANIMATEDTEXTURE_API GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
 {
 	UAnimatedTexture2D* OutGIF = (UAnimatedTexture2D*)data;
@@ -175,7 +196,7 @@ void ANIMATEDTEXTURE_API GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
 	}
 
 	if (OutGIF->GetFrameCount() == 0) {
-		//OutGIF->Import_Init(whdr->xdim, whdr->ydim, whdr->bkgd, whdr->nfrm);
+		OutGIF->Import_Init(whdr->xdim, whdr->ydim, whdr->bkgd, whdr->nfrm);
 	}
 
 	if (OutGIF->IsStart) {
@@ -225,8 +246,12 @@ void ANIMATEDTEXTURE_API GIFFrameLoader1(void* data, struct GIF_WHDR* whdr)
 	OutGIF->NowFramIndex = FrameIndex;
 	OutGIF->Frames.Add(FrameIndex, Frame);
 }
+*/
 
 void UAnimatedTexture2D::OpenGIF() {
+
+	//LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::AnimTexture));
+
 	GifData data;
 	memset(&data, 0, sizeof(data));
 	data.m_lpBuffer = RawData.GetData();
@@ -238,7 +263,11 @@ void UAnimatedTexture2D::OpenGIF() {
 		return;
 	}
 
+	double Delay = 0.f;
+	int32 DisposalMode = -1;
+	int32 TransparentIndex = -1;
 	GifRecordType RecordType;
+
 	do {
 		if (DGifGetRecordType(GifFileData, &RecordType) == GIF_ERROR) {
 
@@ -248,11 +277,17 @@ void UAnimatedTexture2D::OpenGIF() {
 			return;
 		}
 
+		Background = GifFileData->SBackGroundColor;
+
+		LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::LoadGif));
+
 		switch (RecordType) {
 			case IMAGE_DESC_RECORD_TYPE:
 			{
-				GraphicsControlBlock GBC;
-				if (DGifGetImageDesc(GifFileData) == GIF_ERROR && ) {
+				FGIFFrame* Frame = (FGIFFrame*)FMemory::Malloc(sizeof(FGIFFrame));
+				memset(Frame, 0, sizeof(FGIFFrame));
+
+				if (DGifGetImageDesc(GifFileData) == GIF_ERROR) {
 					UE_LOG(LogTexture, Error, TEXT("Load Gif File Error"));
 					DGifCloseFile(GifFileData, nullptr);
 					return;
@@ -266,24 +301,147 @@ void UAnimatedTexture2D::OpenGIF() {
 					return;
 				}
 
+				Frame->Time = Delay;
+				Frame->Index = GifFileData->ImageCount;
+				Frame->Width = GifFileData->Image.Width;
+				Frame->Height = GifFileData->Image.Height;
+				Frame->OffsetX = GifFileData->Image.Left;
+				Frame->OffsetY = GifFileData->Image.Top;
+				Frame->Mode = DisposalMode;
+				Frame->Interlacing = GifFileData->Image.Interlace;
+				Frame->TransparentIndex = TransparentIndex;
+
 				if (GetFrameCount() == 0) {
 					Import_Init(GifFileData->SWidth, GifFileData->SHeight);
 				}
-					
+
+				if (IsStart) {
+					Duration += Frame->Time;
+					FramNum++;
+				}
+
+				Frame->PixelIndicesSize = Frame->Width * Frame->Height;
+				Frame->PixelIndices = (uint8**)FMemory::Malloc(Frame->Height * sizeof(uint8*));
+				for (uint32 i = 0; i < Frame->Height; i++) {
+					Frame->PixelIndices[i] = (uint8*)FMemory::Malloc(Frame->Width * sizeof(uint8));
+				}
+
+				if (Frame->Interlacing) {
+					int InterlacedOffset[] = { 0, 4, 2, 1 };
+					int InterlacedJumps[] = { 8, 8, 4, 2 };
+
+					for (uint32 i = 0; i < 4; ++i) {
+						for (uint32 Row = Frame->OffsetY + InterlacedOffset[i]; Row < Frame->OffsetY + Frame->Height; Row += InterlacedJumps[i]) {
+							if (DGifGetLine(GifFileData, Frame->PixelIndices[Row], Frame->Width) == GIF_ERROR) {
+
+								for (uint32 j = 0; j < Frame->Height; j++) {
+									FMemory::Free(Frame->PixelIndices[j]);
+								}
+								FMemory::Free(Frame->PixelIndices);
+								FMemory::Free(Frame);
+								
+								UE_LOG(LogTexture, Error, TEXT("Gif GetLine Error"));
+								DGifCloseFile(GifFileData, nullptr);
+								return;
+							}
+
+							int32 MaxCompSize = LZ4_compressBound(Frame->Width);
+							uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize * sizeof(uint8));
+							check(TempBuff);
+
+							uint64 CompPixelIndicesSize = LZ4_compress_default((char*)Frame->PixelIndices[Row], (char*)TempBuff, Frame->Width, MaxCompSize);
+							FMemory::Free(Frame->PixelIndices[Row]);
+							TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
+							Frame->PixelIndices[Row] = TempBuff;
+
+							Frame->CompPixelIndicesSize.Add(CompPixelIndicesSize);
+							CompSize += Frame->CompPixelIndicesSize[Row];
+						}
+					}
+				}
+				else {
+					for (uint32 Row = 0; Row < Frame->Height; ++Row) {
+						if (DGifGetLine(GifFileData, Frame->PixelIndices[Row], Frame->Width) == GIF_ERROR) {
+
+							for (uint32 i = 0; i < Frame->Height; i++) {
+								FMemory::Free(Frame->PixelIndices[i]);
+							}
+							FMemory::Free(Frame->PixelIndices);
+							FMemory::Free(Frame);
+
+							UE_LOG(LogTexture, Error, TEXT("Gif GetLine Error"));
+							DGifCloseFile(GifFileData, nullptr);
+							return;
+						}
+
+						int32 MaxCompSize = LZ4_compressBound(Frame->Width);
+						uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize * sizeof(uint8));
+						check(TempBuff);
+
+						uint64 CompPixelIndicesSize = LZ4_compress_default((char*)Frame->PixelIndices[Row], (char*)TempBuff, Frame->Width, MaxCompSize);
+						FMemory::Free(Frame->PixelIndices[Row]);
+						TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
+						Frame->PixelIndices[Row] = TempBuff;
+
+						Frame->CompPixelIndicesSize.Add(CompPixelIndicesSize);
+						CompSize += Frame->CompPixelIndicesSize[Row];
+					}
+				}
+
+				NowFramIndex = GifFileData->ImageCount - 1;
+				NotCompSize += Frame->PixelIndicesSize;
+				
+				ColorMapObject* TargetColorMap = GifFileData->Image.ColorMap == nullptr ? GifFileData->SColorMap : GifFileData->Image.ColorMap;
+				int PaletteSize = TargetColorMap->ColorCount;
+				Frame->Palette.Init(FColor(0, 0, 0, 255), PaletteSize);
+				for (int i = 0; i < PaletteSize; i++)
+				{
+					FColor& uc = Frame->Palette[i];
+					uc.R = TargetColorMap->Colors[i].Red;
+					uc.G = TargetColorMap->Colors[i].Green;
+					uc.B = TargetColorMap->Colors[i].Blue;
+				}
+
+				Frames.Add(NowFramIndex, Frame);
 				break;
 			}
 			case EXTENSION_RECORD_TYPE:
 			{
+				GifByteType* ExGifData = nullptr;
+				int32 ExType = 0;
 
+				if (DGifGetExtension(GifFileData, &ExType, &ExGifData)) {
+					while (ExGifData) {
+						switch (ExType) {
+							case GRAPHICS_EXT_FUNC_CODE:
+							{
+								GraphicsControlBlock GCB;
+								if (DGifExtensionToGCB(ExGifData[0], ExGifData + 1, &GCB)) {
+									Delay = GCB.DelayTime * 0.01;
+									DisposalMode = GCB.DisposalMode;
+									TransparentIndex = GCB.TransparentColor;
+								}
+								break;
+							}
+						}
+
+						if (DGifGetExtensionNext(GifFileData, &ExGifData) == GIF_ERROR) {
+							UE_LOG(LogTexture, Error, TEXT("Gif ExData Error"));
+							DGifCloseFile(GifFileData, nullptr);
+							return;
+						}
+					}
+				}
 				break;
 			}
-			default:
-				break;
+		default:
+			break;
 		}
 
 	} while (RecordType != TERMINATE_RECORD_TYPE);
 
 	DGifCloseFile(GifFileData, nullptr);
+	GifFileData = nullptr;
 }
 
 bool UAnimatedTexture2D::ImportGIF(const uint8* Buffer, uint32 BufferSize)
@@ -293,11 +451,20 @@ bool UAnimatedTexture2D::ImportGIF(const uint8* Buffer, uint32 BufferSize)
 	RawData.SetNumUninitialized(BufferSize);
 	FMemory::Memcpy(RawData.GetData(), Buffer, BufferSize);
 
-	GIF_Load((void*)RawData.GetData(), RawData.Num(), GIFFrameLoader1, 0, (void*)this, NowFramIndex);
+	OpenGIF();
 
 	UE_LOG(LogTexture, Error, TEXT("Texture: %s, NotCompSize: %d, CompSize: %d"), *GetName(), NotCompSize, CompSize);
 
 	return ParseRawData();
+}
+
+void UAnimatedTexture2D::Import_Init(uint32 InGlobalWidth, uint32 InGlobalHeight, uint8 InBackground, uint32 InFrameCount)
+{
+	GlobalWidth = InGlobalWidth;
+	GlobalHeight = InGlobalHeight;
+	Background = InBackground;
+
+	FrameNum = InFrameCount;
 }
 
 void UAnimatedTexture2D::Import_Init(uint32 InGlobalWidth, uint32 InGlobalHeight)
@@ -313,13 +480,9 @@ void UAnimatedTexture2D::PostInitProperties()
 
 bool UAnimatedTexture2D::ParseRawData()
 {
-	int Ret = GIF_Load((void*)RawData.GetData(), RawData.Num(), GIFFrameLoader1, 0, (void*)this, 0L);
+	OpenGIF();
 	IsStart = false;
 
-	if (Ret < 0) {
-		UE_LOG(LogTexture, Warning, TEXT("gif format error."));
-		return false;
-	}
 	return true;
 }
 

@@ -14,6 +14,13 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
+enum class EAnimatedTextureLLMTag {
+	ProjectMaxTag = (int)ELLMTag::ProjectTagStart,
+	LoadGif,
+	AnimTexture,
+	RHITexture
+};
+
 class FAnimatedTextureModule : public IModuleInterface
 {
 public:
