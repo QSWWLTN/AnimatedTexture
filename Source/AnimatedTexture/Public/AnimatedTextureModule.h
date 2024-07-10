@@ -16,7 +16,6 @@
 
 enum class EAnimatedTextureLLMTag {
 	ProjectMaxTag = (int)ELLMTag::ProjectTagStart,
-	LoadGif,
 	AnimTexture,
 	RHITexture
 };

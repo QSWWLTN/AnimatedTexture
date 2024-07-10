@@ -7,10 +7,9 @@
 #include "DeviceProfiles/DeviceProfile.h"	// Engine
 #include "DeviceProfiles/DeviceProfileManager.h"	// Engine
 
-/*
-#include "gif_load/gif_load.h" // from: https://github.com/hidefromkgb/gif_load
-*/
-
+#ifdef UseZstd
+#include "zstd.h"
+#endif
 
 FAnimatedTextureResource::FAnimatedTextureResource(UAnimatedTexture2D * InOwner) 
 :FTickableObjectRenderThread(false, true),
@@ -173,7 +172,10 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	if (!Texture2DRHI)
 		return;
 
-	FGIFFrame GIFFrame = Owner->GetCacheFrame();
+	FGIFFrame* GIFFrame = Owner->GetCacheFrame();
+	if (GIFFrame == nullptr) {
+		return;
+	}
 
 	uint32& InLastFrame = LastFrame;
 	bool bSupportsTransparency = Owner->SupportsTransparency;
@@ -216,19 +218,37 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	}// end of for(iter)
 	*/
 
-	for (uint32 Y = 0; Y < GIFFrame.Height; Y++) {
-		for (uint32 X = 0; X < GIFFrame.Width; X++) {
+	for (uint32 Y = 0; Y < GIFFrame->Height; Y++) {
 
-			uint64 TexIndex = GIFFrame.Width * Y + X;
+#ifdef UseZstd
+		uint64 MaxSize = GIFFrame->Width;
+#else
+		uint64 MaxSize = LZ4_compressBound(GIFFrame->Width);
+#endif
 
-			if (X < GIFFrame.Width && Y < GIFFrame.Height) {
+		uint8* LineBuff = (uint8*)FMemory::Malloc(MaxSize * sizeof(uint8));
+		memset(LineBuff, 0, MaxSize * sizeof(uint8));
 
-				uint8 TexColorIndex = GIFFrame.PixelIndices[Y][X];
-				if (GIFFrame.Palette.IsValidIndex(TexColorIndex) && TexColorIndex != GIFFrame.TransparentIndex) {
-					PICT[TexIndex] = GIFFrame.Palette[TexColorIndex];
+#ifdef UseZstd
+		ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices[Y], GIFFrame->CompPixelIndicesSize[Y]);
+#else
+		LZ4_decompress_safe((char*)GIFFrame->PixelIndices[Y], (char*)LineBuff, GIFFrame->CompPixelIndicesSize[Y], MaxSize);
+#endif
+
+		for (uint32 X = 0; X < GIFFrame->Width; X++) {
+
+			uint64 TexIndex = GIFFrame->Width * Y + X;
+
+			if (X < GIFFrame->Width && Y < GIFFrame->Height) {
+
+				uint8 TexColorIndex = LineBuff[X];
+				if (GIFFrame->Palette.IsValidIndex(TexColorIndex) && TexColorIndex != GIFFrame->TransparentIndex) {
+					PICT[TexIndex] = GIFFrame->Palette[TexColorIndex];
 				}
 			}
 		}
+
+		FMemory::Free(LineBuff);
 	}
 
 	//-- write texture
@@ -267,7 +287,7 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	}// end of else
 
 	//-- frame blending
-	int32 Mode = GIFFrame.Mode;
+	int32 Mode = GIFFrame->Mode;
 
 	if (Mode == 3 && FirstFrame)	// loop restart
 		Mode = 2;
@@ -283,19 +303,19 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 
 		if (bSupportsTransparency)
 		{
-			if (GIFFrame.TransparentIndex == -1)
-				BGColor = GIFFrame.Palette[InBackground];
+			if (GIFFrame->TransparentIndex == -1)
+				BGColor = GIFFrame->Palette[InBackground];
 			else
-				BGColor = GIFFrame.Palette[GIFFrame.TransparentIndex];
+				BGColor = GIFFrame->Palette[GIFFrame->TransparentIndex];
 			BGColor.A = 0;
 		}
 		else
 		{
-			BGColor = GIFFrame.Palette[InBackground];
+			BGColor = GIFFrame->Palette[InBackground];
 		}
 
-		uint32 BGWidth = GIFFrame.Width;
-		uint32 BGHeight = GIFFrame.Height;
+		uint32 BGWidth = GIFFrame->Width;
+		uint32 BGHeight = GIFFrame->Height;
 
 		if (FirstFrame)
 		{
@@ -319,9 +339,4 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 		UE_LOG(LogAnimTexture, Warning, TEXT("Unknown GIF Mode"));
 		break;
 	}//end of switch
-
-	for (uint32 i = 0; i < GIFFrame.Height; i++) {
-		FMemory::Free(GIFFrame.PixelIndices[i]);
-	}
-	FMemory::Free(GIFFrame.PixelIndices);
 }

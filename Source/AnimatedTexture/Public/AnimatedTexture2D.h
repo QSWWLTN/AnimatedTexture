@@ -4,6 +4,10 @@
 #include "Tickable.h"
 #include "Engine/Texture.h"
 
+#define UseZstd
+
+#ifndef UseZstd
+
 #if !WITH_EDITOR
 #include "Compression/lz4.h"
 #else
@@ -11,6 +15,8 @@
 #include "Compression/lz4.h"
 #endif
 #include "TraceLog/Private/Trace/LZ4/lz4.c.inl"
+#endif
+
 #endif
 
 #include "AnimatedTexture2D.generated.h"
@@ -106,7 +112,7 @@ public:
 		return FramNum;
 	}
 
-	FGIFFrame GetCacheFrame();
+	FGIFFrame* GetCacheFrame();
 	float GetCacheFrameDelay();
 
 	float GetFrameDelay()

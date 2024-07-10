@@ -12,6 +12,13 @@ public class AnimatedTexture : ModuleRules
 		
 		PublicIncludePaths.AddRange(
 			new string[] {
+				Path.Combine(ModuleDirectory,"ThirdParty/zstd"),
+                Path.Combine(ModuleDirectory,"ThirdParty/zstd/common"),
+                Path.Combine(ModuleDirectory,"ThirdParty/zstd/compress"),
+                Path.Combine(ModuleDirectory,"ThirdParty/zstd/decompress"),
+                Path.Combine(ModuleDirectory,"ThirdParty/zstd/deprecated"),
+                Path.Combine(ModuleDirectory,"ThirdParty/zstd/dictBuilder"),
+                Path.Combine(ModuleDirectory,"ThirdParty/zstd/legacy")
 				// ... add public include paths required here ...
 			}
 			);
@@ -44,6 +51,12 @@ public class AnimatedTexture : ModuleRules
 			}
 			);
 		
+		 PublicDefinitions.AddRange(new string[]
+        {
+            "ZSTD_MULTITHREAD=1",
+            "ZSTD_LEGACY_SUPPORT=5"
+        });
+        bEnableUndefinedIdentifierWarnings = false;
 		
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]
