@@ -12,7 +12,7 @@
 #endif
 
 FAnimatedTextureResource::FAnimatedTextureResource(UAnimatedTexture2D * InOwner) 
-:FTickableObjectRenderThread(false, true),
+:FTickableObjectRenderThread(false, false),
 Owner(InOwner),
 LastFrame(0)
 {
@@ -71,7 +71,8 @@ void FAnimatedTextureResource::Tick(float DeltaTime)
 {
 	float duration = FApp::GetCurrentTime() - Owner->GetLastRenderTimeForStreaming();
 	bool bShouldTick = Owner->bAlwaysTickEvenNoSee || duration < 2.5f;
-	if(Owner && Owner->GlobalHeight >0 && Owner->GlobalWidth > 0)
+
+	if(Owner && Owner->GlobalHeight >0 && Owner->GlobalWidth > 0 && bShouldTick)
 	{
 		TickAnim(DeltaTime * Owner->PlayRate);
 		return;
@@ -80,7 +81,7 @@ void FAnimatedTextureResource::Tick(float DeltaTime)
 
 bool FAnimatedTextureResource::TickAnim(float DeltaTime)
 {
-	bool NextFrame = false;
+	static bool NextFrame = false;
 
 	//如果没有加载完成先跳过这次刷新
 	if (Owner->IsLoading) {
@@ -91,9 +92,16 @@ bool FAnimatedTextureResource::TickAnim(float DeltaTime)
 	float FrameDelay = Owner->GetFrameDelay();
 	AnimState.FrameTime += DeltaTime;
 
-	if (FrameDelay > 1.f / 24.f) {
-		FrameDelay = 1.f / 24.f;
+	/*
+	//当帧数过低的时候跳帧
+	if (DeltaTime > 1.f / 20.f) {
+		if (FMath::RandBool() && NextFrame) {
+			NextFrame = false;
+			return false;
+		}
+		NextFrame = true;
 	}
+	*/
 
 	// step to next frame
 	if (AnimState.FrameTime > FrameDelay) {
@@ -152,6 +160,7 @@ void FAnimatedTextureResource::CreateSamplerStates(float MipMapBias)
 void FAnimatedTextureResource::DecodeFrameToRHI()
 {
 	LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::RHITexture));
+	SCOPE_CYCLE_COUNTER(STAT_ReanderAnimTexture);
 
 	if (FrameBuffer[0].Num() != Owner->GlobalHeight * Owner->GlobalWidth) {
 		LastFrame = 0;
@@ -173,7 +182,7 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 		return;
 
 	FGIFFrame* GIFFrame = Owner->GetCacheFrame();
-	if (GIFFrame == nullptr) {
+	if (GIFFrame == nullptr || GIFFrame->PixelIndices == nullptr) {
 		return;
 	}
 
@@ -218,22 +227,22 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	}// end of for(iter)
 	*/
 
+#ifdef UseZstd
+	uint64 MaxSize = GIFFrame->PixelIndicesSize;
+#else
+	uint64 MaxSize = LZ4_compressBound(GIFFrame->PixelIndicesSize);
+#endif
+
+	uint8* LineBuff = (uint8*)FMemory::Malloc(MaxSize);
+	memset(LineBuff, 0, MaxSize);
+
+#ifdef UseZstd
+	ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize);
+#else
+	LZ4_decompress_safe((char*)GIFFrame->PixelIndices, (char*)LineBuff, GIFFrame->CompPixelIndicesSize, MaxSize);
+#endif
+
 	for (uint32 Y = 0; Y < GIFFrame->Height; Y++) {
-
-#ifdef UseZstd
-		uint64 MaxSize = GIFFrame->Width;
-#else
-		uint64 MaxSize = LZ4_compressBound(GIFFrame->Width);
-#endif
-
-		uint8* LineBuff = (uint8*)FMemory::Malloc(MaxSize * sizeof(uint8));
-		memset(LineBuff, 0, MaxSize * sizeof(uint8));
-
-#ifdef UseZstd
-		ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices[Y], GIFFrame->CompPixelIndicesSize[Y]);
-#else
-		LZ4_decompress_safe((char*)GIFFrame->PixelIndices[Y], (char*)LineBuff, GIFFrame->CompPixelIndicesSize[Y], MaxSize);
-#endif
 
 		for (uint32 X = 0; X < GIFFrame->Width; X++) {
 
@@ -241,15 +250,14 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 
 			if (X < GIFFrame->Width && Y < GIFFrame->Height) {
 
-				uint8 TexColorIndex = LineBuff[X];
+				uint8 TexColorIndex = LineBuff[TexIndex];
 				if (GIFFrame->Palette.IsValidIndex(TexColorIndex) && TexColorIndex != GIFFrame->TransparentIndex) {
 					PICT[TexIndex] = GIFFrame->Palette[TexColorIndex];
 				}
 			}
 		}
-
-		FMemory::Free(LineBuff);
 	}
+	FMemory::Free(LineBuff);
 
 	//-- write texture
 	uint32 DestPitch = 0;

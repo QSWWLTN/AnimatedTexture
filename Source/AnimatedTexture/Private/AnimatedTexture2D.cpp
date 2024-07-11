@@ -113,10 +113,6 @@ void UAnimatedTexture2D::BeginDestroy()
 	for (auto& Data : Frames) {
 		if (Data.Value->PixelIndices != nullptr) {
 
-			for (uint32 i = 0; i < Data.Value->Height; i++) {
-				FMemory::Free(Data.Value->PixelIndices[i]);
-			}
-
 			FMemory::Free(Data.Value->PixelIndices);
 			Data.Value->PixelIndices = nullptr;
 		}
@@ -221,7 +217,7 @@ void UAnimatedTexture2D::OpenGIF() {
 
 	LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::AnimTexture));
 
-	UE_LOG(LogTexture, Log, TEXT("Texture: %s"), *GetName());
+	UE_LOG(LogTexture, Log, TEXT("%s GifFileDataSize: %.1f MB"), *GetName(), (float)RawData.Num() / 1024.f / 1024.f);
 
 	GifData data;
 	memset(&data, 0, sizeof(data));
@@ -290,9 +286,10 @@ void UAnimatedTexture2D::OpenGIF() {
 				}
 
 				Frame->PixelIndicesSize = Frame->Width * Frame->Height;
-				Frame->PixelIndices = (uint8**)FMemory::Malloc(Frame->Height * sizeof(uint8*));
-				for (uint32 i = 0; i < Frame->Height; i++) {
-					Frame->PixelIndices[i] = (uint8*)FMemory::Malloc(Frame->Width * sizeof(uint8));
+
+				uint8** TextureTempBuff = (uint8**)FMemory::Malloc(Frame->Height * sizeof(uint8*));
+				for (uint32 Y = 0; Y < Frame->Height; Y++) {
+					TextureTempBuff[Y] = (uint8*)FMemory::Malloc(Frame->Width);
 				}
 
 				if (Frame->Interlacing) {
@@ -301,7 +298,12 @@ void UAnimatedTexture2D::OpenGIF() {
 
 					for (uint32 i = 0; i < 4; ++i) {
 						for (uint32 Row = Frame->OffsetY + InterlacedOffset[i]; Row < Frame->OffsetY + Frame->Height; Row += InterlacedJumps[i]) {
-							if (DGifGetLine(GifFileData, Frame->PixelIndices[Row], Frame->Width) == GIF_ERROR) {
+							if (DGifGetLine(GifFileData, TextureTempBuff[Row], Frame->Width) == GIF_ERROR) {
+
+								for (uint32 Y = 0; Y < Frame->Height; Y++) {
+									FMemory::Free(TextureTempBuff[Y]);
+								}
+								FMemory::Free(TextureTempBuff);
 
 								FMemory::Free(Frame->PixelIndices);
 								FMemory::Free(Frame);
@@ -310,38 +312,17 @@ void UAnimatedTexture2D::OpenGIF() {
 								DGifCloseFile(GifFileData, nullptr);
 								return;
 							}
-
-#ifdef UseZstd
-							int32 MaxCompSize = ZSTD_compressBound(Frame->Width);
-							uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize * sizeof(uint8));
-							check(TempBuff);
-
-							uint64 CompPixelIndicesSize = ZSTD_compress(TempBuff, MaxCompSize, Frame->PixelIndices[Row], Frame->Width, 3);
-							FMemory::Free(Frame->PixelIndices[Row]);
-							TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
-							Frame->PixelIndices[Row] = TempBuff;
-
-							Frame->CompPixelIndicesSize.Add(CompPixelIndicesSize);
-							CompSize += Frame->CompPixelIndicesSize[Row];
-#else
-							int32 MaxCompSize = LZ4_compressBound(Frame->Width);
-							uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize * sizeof(uint8));
-							check(TempBuff);
-
-							uint64 CompPixelIndicesSize = LZ4_compress_default((char*)Frame->PixelIndices[Row], (char*)TempBuff, Frame->Width, MaxCompSize);
-							FMemory::Free(Frame->PixelIndices[Row]);
-							TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
-							Frame->PixelIndices[Row] = TempBuff;
-
-							Frame->CompPixelIndicesSize.Add(CompPixelIndicesSize);
-							CompSize += Frame->CompPixelIndicesSize[Row];
-#endif
 						}
 					}
 				}
 				else {
 					for (uint32 Row = 0; Row < Frame->Height; ++Row) {
-						if (DGifGetLine(GifFileData, Frame->PixelIndices[Row], Frame->Width) == GIF_ERROR) {
+						if (DGifGetLine(GifFileData, TextureTempBuff[Row], Frame->Width) == GIF_ERROR) {
+
+							for (uint32 Y = 0; Y < Frame->Height; Y++) {
+								FMemory::Free(TextureTempBuff[Y]);
+							}
+							FMemory::Free(TextureTempBuff);
 
 							FMemory::Free(Frame->PixelIndices);
 							FMemory::Free(Frame);
@@ -350,34 +331,46 @@ void UAnimatedTexture2D::OpenGIF() {
 							DGifCloseFile(GifFileData, nullptr);
 							return;
 						}
-
-#ifdef UseZstd
-						int32 MaxCompSize = ZSTD_compressBound(Frame->Width);
-						uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize * sizeof(uint8));
-						check(TempBuff);
-
-						uint64 CompPixelIndicesSize = ZSTD_compress(TempBuff, MaxCompSize, Frame->PixelIndices[Row], Frame->Width, 1);
-						FMemory::Free(Frame->PixelIndices[Row]);
-						TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
-						Frame->PixelIndices[Row] = TempBuff;
-
-						Frame->CompPixelIndicesSize.Add(CompPixelIndicesSize);
-						CompSize += Frame->CompPixelIndicesSize[Row];
-#else
-						int32 MaxCompSize = LZ4_compressBound(Frame->Width);
-						uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize * sizeof(uint8));
-						check(TempBuff);
-
-						uint64 CompPixelIndicesSize = LZ4_compress_default((char*)Frame->PixelIndices[Row], (char*)TempBuff, Frame->Width, MaxCompSize);
-						FMemory::Free(Frame->PixelIndices[Row]);
-						TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
-						Frame->PixelIndices[Row] = TempBuff;
-
-						Frame->CompPixelIndicesSize.Add(CompPixelIndicesSize);
-						CompSize += Frame->CompPixelIndicesSize[Row];
-#endif
 					}
 				}
+
+				Frame->PixelIndices = (uint8*)FMemory::Malloc(Frame->PixelIndicesSize);
+				//需要换另一种方法
+				for (uint32 Y = 0; Y < Frame->Height; Y++) {
+					for (uint32 X = 0; X < Frame->Width; X++) {
+						uint64 TexIndex = Frame->Width * Y + X;
+
+						Frame->PixelIndices[TexIndex] = TextureTempBuff[Y][X];
+					}
+					FMemory::Free(TextureTempBuff[Y]);
+				}
+				FMemory::Free(TextureTempBuff);
+
+#ifdef UseZstd
+				int32 MaxCompSize = ZSTD_compressBound(Frame->PixelIndicesSize);
+				uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize);
+				check(TempBuff);
+
+				uint64 CompPixelIndicesSize = ZSTD_compress(TempBuff, MaxCompSize, Frame->PixelIndices, Frame->PixelIndicesSize, CompressLevel);
+				FMemory::Free(Frame->PixelIndices);
+				TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
+				Frame->PixelIndices = TempBuff;
+
+				Frame->CompPixelIndicesSize = CompPixelIndicesSize;
+				CompSize += Frame->CompPixelIndicesSize;
+#else
+				int32 MaxCompSize = LZ4_compressBound(Frame->PixelIndicesSize);
+				uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize);
+				check(TempBuff);
+
+				uint64 CompPixelIndicesSize = LZ4_compress_default((char*)Frame->PixelIndices, (char*)TempBuff, Frame->PixelIndicesSize, MaxCompSize);
+				FMemory::Free(Frame->PixelIndices);
+				TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
+				Frame->PixelIndices = TempBuff;
+
+				Frame->CompPixelIndicesSize = CompPixelIndicesSize;
+				CompSize += Frame->CompPixelIndicesSize;
+#endif
 
 				NowFramIndex = GifFileData->ImageCount - 1;
 				NotCompSize += Frame->PixelIndicesSize;
@@ -439,10 +432,14 @@ void UAnimatedTexture2D::OpenGIF() {
 
 bool UAnimatedTexture2D::ImportGIF(const uint8* Buffer, uint32 BufferSize)
 {
+	LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::LoadAnimTexture));
+
 	IsStart = true;
 	Frames.Empty();
-	RawData.SetNumUninitialized(BufferSize);
+	RawData.Init(0, BufferSize);
 	FMemory::Memcpy(RawData.GetData(), Buffer, BufferSize);
+
+	UE_LOG(LogTexture, Log, TEXT("GifFileDataSize: %.1f"), (float)BufferSize / 1024.f / 1024.f);
 
 	OpenGIF();
 

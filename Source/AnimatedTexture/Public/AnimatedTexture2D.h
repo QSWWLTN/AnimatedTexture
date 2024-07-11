@@ -6,6 +6,11 @@
 
 #define UseZstd
 
+#ifdef UseZstd
+#define CompressLevel 3
+#endif
+
+
 #ifndef UseZstd
 
 #if !WITH_EDITOR
@@ -39,10 +44,10 @@ public:
 	uint8 Mode;	// next frame (sic next, not current) blending mode
 	int16 TransparentIndex;	// 0-based transparent color index (or −1 when transparency is disabled)
 
-	uint8** PixelIndices = nullptr;
+	uint8* PixelIndices = nullptr;
 	uint64 PixelIndicesSize = 0;
 
-	TArray<uint64> CompPixelIndicesSize;
+	uint64 CompPixelIndicesSize;
 	TArray<FColor> Palette;
 
 	FGIFFrame() :Time(0), Index(0), Width(0), Height(0), OffsetX(0), OffsetY(0),
@@ -70,7 +75,7 @@ public:
 		bool SupportsTransparency = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AnimatedTexture)
-		float DefaultFrameDelay = 1.0f / 24.f;
+		float DefaultFrameDelay = 1.0f / 15.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AnimatedTexture)
 		float PlayRate = 1.0f;

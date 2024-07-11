@@ -14,8 +14,12 @@
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
+DECLARE_STATS_GROUP(TEXT("AnimTextureTimerGroup"), STATGROUP_AnimTextureTimerGroup, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("ReanderAnimTexture"), STAT_ReanderAnimTexture, STATGROUP_AnimTextureTimerGroup);
+
 enum class EAnimatedTextureLLMTag {
 	ProjectMaxTag = (int)ELLMTag::ProjectTagStart,
+	LoadAnimTexture,
 	AnimTexture,
 	RHITexture
 };

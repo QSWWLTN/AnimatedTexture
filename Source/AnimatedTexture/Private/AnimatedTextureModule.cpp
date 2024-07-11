@@ -7,11 +7,13 @@ DEFINE_LOG_CATEGORY(LogAnimTexture);
 
 DECLARE_LLM_MEMORY_STAT(TEXT("AnimTexture"), STAT_CustomGroupLLM, STATGROUP_LLM);
 
+DECLARE_LLM_MEMORY_STAT(TEXT("LoadAnimTexture"), STAT_LoadAnimTexture_LLM, STATGROUP_LLMFULL);
 DECLARE_LLM_MEMORY_STAT(TEXT("AnimTexture"), STAT_AnimTexture_LLM, STATGROUP_LLMFULL);
 DECLARE_LLM_MEMORY_STAT(TEXT("RHITexture"), STAT_RHITexture_LLM, STATGROUP_LLMFULL);
 
 void FAnimatedTextureModule::StartupModule()
 {
+	LLM(FLowLevelMemTracker::Get().RegisterProjectTag((int32)EAnimatedTextureLLMTag::LoadAnimTexture, TEXT("LoadAnimTexture"), GET_STATFNAME(STAT_LoadAnimTexture_LLM), GET_STATFNAME(STAT_CustomGroupLLM), -1));
 	LLM(FLowLevelMemTracker::Get().RegisterProjectTag((int32)EAnimatedTextureLLMTag::AnimTexture, TEXT("AnimTexture"), GET_STATFNAME(STAT_AnimTexture_LLM), GET_STATFNAME(STAT_CustomGroupLLM), -1));
 	LLM(FLowLevelMemTracker::Get().RegisterProjectTag((int32)EAnimatedTextureLLMTag::RHITexture, TEXT("AnimRHITexture"), GET_STATFNAME(STAT_RHITexture_LLM), GET_STATFNAME(STAT_CustomGroupLLM), -1));
 }
