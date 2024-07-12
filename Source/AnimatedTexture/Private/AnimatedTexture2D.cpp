@@ -424,7 +424,9 @@ void UAnimatedTexture2D::OpenGIF() {
 
 	} while (RecordType != TERMINATE_RECORD_TYPE);
 
-	DGifCloseFile(GifFileData, nullptr);
+	if (DGifCloseFile(GifFileData, nullptr) == GIF_ERROR) {
+		UE_LOG(LogTexture, Error, TEXT("Not Free Gif Memory"));
+	}
 	GifFileData = nullptr;
 
 	UE_LOG(LogTexture, Log, TEXT("Texture: %s, NotCompSize: %.1f MB, CompSize: %.1f MB"), *GetName(), (float)NotCompSize / 1024.f /1024.f, CompSize / 1024.f / 1024.f);

@@ -70,7 +70,7 @@ void FAnimatedTextureResource::ReleaseRHI()
 void FAnimatedTextureResource::Tick(float DeltaTime)
 {
 	float duration = FApp::GetCurrentTime() - Owner->GetLastRenderTimeForStreaming();
-	bool bShouldTick = Owner->bAlwaysTickEvenNoSee || duration < 2.5f;
+	bool bShouldTick = /*Owner->bAlwaysTickEvenNoSee ||*/ duration < 2.5f;
 
 	if(Owner && Owner->GlobalHeight >0 && Owner->GlobalWidth > 0 && bShouldTick)
 	{
@@ -236,28 +236,31 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	uint8* LineBuff = (uint8*)FMemory::Malloc(MaxSize);
 	memset(LineBuff, 0, MaxSize);
 
+	{
+		SCOPE_CYCLE_COUNTER(STAT_DeCompress);
 #ifdef UseZstd
-	ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize);
+		ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize);
 #else
-	LZ4_decompress_safe((char*)GIFFrame->PixelIndices, (char*)LineBuff, GIFFrame->CompPixelIndicesSize, MaxSize);
+		LZ4_decompress_safe((char*)GIFFrame->PixelIndices, (char*)LineBuff, GIFFrame->CompPixelIndicesSize, MaxSize);
 #endif
 
-	for (uint32 Y = 0; Y < GIFFrame->Height; Y++) {
+		for (uint32 Y = 0; Y < GIFFrame->Height; Y++) {
 
-		for (uint32 X = 0; X < GIFFrame->Width; X++) {
+			for (uint32 X = 0; X < GIFFrame->Width; X++) {
 
-			uint64 TexIndex = GIFFrame->Width * Y + X;
+				uint64 TexIndex = GIFFrame->Width * Y + X;
 
-			if (X < GIFFrame->Width && Y < GIFFrame->Height) {
+				if (X < GIFFrame->Width && Y < GIFFrame->Height) {
 
-				uint8 TexColorIndex = LineBuff[TexIndex];
-				if (GIFFrame->Palette.IsValidIndex(TexColorIndex) && TexColorIndex != GIFFrame->TransparentIndex) {
-					PICT[TexIndex] = GIFFrame->Palette[TexColorIndex];
+					uint8 TexColorIndex = LineBuff[TexIndex];
+					if (GIFFrame->Palette.IsValidIndex(TexColorIndex) && TexColorIndex != GIFFrame->TransparentIndex) {
+						PICT[TexIndex] = GIFFrame->Palette[TexColorIndex];
+					}
 				}
 			}
 		}
+		FMemory::Free(LineBuff);
 	}
-	FMemory::Free(LineBuff);
 
 	//-- write texture
 	uint32 DestPitch = 0;

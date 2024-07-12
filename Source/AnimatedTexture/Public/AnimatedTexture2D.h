@@ -7,7 +7,7 @@
 #define UseZstd
 
 #ifdef UseZstd
-#define CompressLevel 3
+#define CompressLevel 5
 #endif
 
 
