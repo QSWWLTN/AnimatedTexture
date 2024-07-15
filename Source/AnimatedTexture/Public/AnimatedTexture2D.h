@@ -4,7 +4,7 @@
 #include "Tickable.h"
 #include "Engine/Texture.h"
 
-#define UseZstd
+#include "AnimatedTextureModule.h"
 
 #ifdef UseZstd
 #define CompressLevel 5

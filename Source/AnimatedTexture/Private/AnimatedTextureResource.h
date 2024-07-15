@@ -1,7 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AnimatedTextureModule.h"
 #include "TextureResource.h"	// Engine
+
+#ifdef UseZstd
+#define ZSTD_STATIC_LINKING_ONLY
+#include "zstd.h"
+#endif
 
 class UAnimatedTexture2D;
 
@@ -45,6 +51,12 @@ private:
 	int32 GetDefaultMipMapBias() const;
 
 	void CreateSamplerStates(float MipMapBias);
+
+#ifdef UseZstd
+private:
+	ZSTD_DCtx* DeCompress = nullptr;
+#endif
+
 
 private:
 	UAnimatedTexture2D* Owner;

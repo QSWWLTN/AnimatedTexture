@@ -2,20 +2,19 @@
 
 #include "AnimatedTextureResource.h"
 #include "AnimatedTexture2D.h"
-#include "AnimatedTextureModule.h"
 
 #include "DeviceProfiles/DeviceProfile.h"	// Engine
 #include "DeviceProfiles/DeviceProfileManager.h"	// Engine
 
-#ifdef UseZstd
-#include "zstd.h"
-#endif
 
 FAnimatedTextureResource::FAnimatedTextureResource(UAnimatedTexture2D * InOwner) 
 :FTickableObjectRenderThread(false, false),
 Owner(InOwner),
 LastFrame(0)
 {
+#ifdef UseZstd
+	DeCompress = ZSTD_createDCtx();
+#endif
 }
 
 void FAnimatedTextureResource::InitRHI(
@@ -50,11 +49,12 @@ void FAnimatedTextureResource::InitRHI(
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, TextureRHI);
 
+	/*
 	if(Owner->GlobalHeight > 0 && Owner->GlobalWidth > 0)
 	{
 		DecodeFrameToRHI();
 	}
-	
+	*/
 
 	Register();
 }
@@ -62,6 +62,10 @@ void FAnimatedTextureResource::InitRHI(
 void FAnimatedTextureResource::ReleaseRHI()
 {
 	Unregister();
+
+#ifdef UseZstd
+	ZSTD_freeDCtx(DeCompress);
+#endif
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, nullptr);
 	FTextureResource::ReleaseRHI();
@@ -239,7 +243,16 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	{
 		SCOPE_CYCLE_COUNTER(STAT_DeCompress);
 #ifdef UseZstd
-		ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize);
+		ZSTD_decompressBegin(DeCompress);
+		ZSTD_DCtx_setMaxWindowSize(DeCompress, GIFFrame->PixelIndicesSize);
+
+		ZSTD_inBuffer InputBuff = { GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize, 0 };
+		ZSTD_outBuffer OutBuff = { LineBuff, GIFFrame->PixelIndicesSize, 0 };
+
+		ZSTD_decompressStream(DeCompress, &OutBuff, &InputBuff);
+		UE_LOG(LogTexture, Log, TEXT("%s Use Memory: %d B"), *Owner->GetName(), ZSTD_sizeof_DCtx(DeCompress));
+
+		//ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize);
 #else
 		LZ4_decompress_safe((char*)GIFFrame->PixelIndices, (char*)LineBuff, GIFFrame->CompPixelIndicesSize, MaxSize);
 #endif
