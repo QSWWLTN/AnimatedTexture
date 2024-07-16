@@ -54,7 +54,7 @@ private:
 
 #ifdef UseZstd
 private:
-	ZSTD_DCtx* DeCompress = nullptr;
+	ZSTD_DStream* DeCompress = nullptr;
 #endif
 
 

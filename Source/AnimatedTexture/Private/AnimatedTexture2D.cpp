@@ -304,8 +304,6 @@ void UAnimatedTexture2D::OpenGIF() {
 									FMemory::Free(TextureTempBuff[Y]);
 								}
 								FMemory::Free(TextureTempBuff);
-
-								FMemory::Free(Frame->PixelIndices);
 								FMemory::Free(Frame);
 								
 								UE_LOG(LogTexture, Error, TEXT("Gif GetLine Error"));
@@ -323,8 +321,6 @@ void UAnimatedTexture2D::OpenGIF() {
 								FMemory::Free(TextureTempBuff[Y]);
 							}
 							FMemory::Free(TextureTempBuff);
-
-							FMemory::Free(Frame->PixelIndices);
 							FMemory::Free(Frame);
 
 							UE_LOG(LogTexture, Error, TEXT("Gif GetLine Error"));
@@ -347,17 +343,23 @@ void UAnimatedTexture2D::OpenGIF() {
 				FMemory::Free(TextureTempBuff);
 
 #ifdef UseZstd
+				ZSTD_CCtx* const cctx = ZSTD_createCCtx();
+
 				int32 MaxCompSize = ZSTD_compressBound(Frame->PixelIndicesSize);
 				uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize);
 				check(TempBuff);
 
-				uint64 CompPixelIndicesSize = ZSTD_compress(TempBuff, MaxCompSize, Frame->PixelIndices, Frame->PixelIndicesSize, CompressLevel);
+				ZSTD_compressBegin(cctx, CompressLevel);
+				uint64 CompPixelIndicesSize = ZSTD_compressEnd(cctx, TempBuff, MaxCompSize, Frame->PixelIndices, Frame->PixelIndicesSize);
+
 				FMemory::Free(Frame->PixelIndices);
 				TempBuff = (uint8*)FMemory::Realloc(TempBuff, CompPixelIndicesSize);
 				Frame->PixelIndices = TempBuff;
 
 				Frame->CompPixelIndicesSize = CompPixelIndicesSize;
 				CompSize += Frame->CompPixelIndicesSize;
+
+				ZSTD_freeCCtx(cctx);
 #else
 				int32 MaxCompSize = LZ4_compressBound(Frame->PixelIndicesSize);
 				uint8* TempBuff = (uint8*)FMemory::Malloc(MaxCompSize);
@@ -414,6 +416,10 @@ void UAnimatedTexture2D::OpenGIF() {
 							DGifCloseFile(GifFileData, nullptr);
 							return;
 						}
+					}
+
+					if (ExGifData) {
+						FMemory::Free(ExGifData);
 					}
 				}
 				break;

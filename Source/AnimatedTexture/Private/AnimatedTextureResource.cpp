@@ -6,14 +6,13 @@
 #include "DeviceProfiles/DeviceProfile.h"	// Engine
 #include "DeviceProfiles/DeviceProfileManager.h"	// Engine
 
-
 FAnimatedTextureResource::FAnimatedTextureResource(UAnimatedTexture2D * InOwner) 
 :FTickableObjectRenderThread(false, false),
 Owner(InOwner),
 LastFrame(0)
 {
 #ifdef UseZstd
-	DeCompress = ZSTD_createDCtx();
+	DeCompress = ZSTD_createDStream();
 #endif
 }
 
@@ -64,7 +63,7 @@ void FAnimatedTextureResource::ReleaseRHI()
 	Unregister();
 
 #ifdef UseZstd
-	ZSTD_freeDCtx(DeCompress);
+	ZSTD_freeDStream(DeCompress);
 #endif
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, nullptr);
@@ -237,22 +236,24 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	uint64 MaxSize = LZ4_compressBound(GIFFrame->PixelIndicesSize);
 #endif
 
-	uint8* LineBuff = (uint8*)FMemory::Malloc(MaxSize);
-	memset(LineBuff, 0, MaxSize);
-
 	{
+		LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::DecompressTexture));
+
+		uint8* LineBuff = (uint8*)FMemory::Malloc(MaxSize);
+		memset(LineBuff, 0, MaxSize);
+
 		SCOPE_CYCLE_COUNTER(STAT_DeCompress);
 #ifdef UseZstd
-		ZSTD_decompressBegin(DeCompress);
-		ZSTD_DCtx_setMaxWindowSize(DeCompress, GIFFrame->PixelIndicesSize);
+		ZSTD_initDStream(DeCompress);
+		ZSTD_DCtx_setParameter(DeCompress, ZSTD_d_windowLogMax, GIFFrame->PixelIndicesSize);
 
-		ZSTD_inBuffer InputBuff = { GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize, 0 };
-		ZSTD_outBuffer OutBuff = { LineBuff, GIFFrame->PixelIndicesSize, 0 };
+		ZSTD_inBuffer InputBuff = { GIFFrame->PixelIndices, GIFFrame->PixelIndicesSize, 0 };
+		ZSTD_outBuffer OutBuff = { LineBuff, MaxSize, 0 };
 
-		ZSTD_decompressStream(DeCompress, &OutBuff, &InputBuff);
-		UE_LOG(LogTexture, Log, TEXT("%s Use Memory: %d B"), *Owner->GetName(), ZSTD_sizeof_DCtx(DeCompress));
-
-		//ZSTD_decompress(LineBuff, MaxSize, GIFFrame->PixelIndices, GIFFrame->CompPixelIndicesSize);
+		int32 Code = ZSTD_decompressStream(DeCompress, &OutBuff, &InputBuff);
+		if (ZSTD_isError(Code)) {
+			UE_LOG(LogTexture, Error, TEXT("deCompress GifData Error"));
+		}
 #else
 		LZ4_decompress_safe((char*)GIFFrame->PixelIndices, (char*)LineBuff, GIFFrame->CompPixelIndicesSize, MaxSize);
 #endif
