@@ -11,6 +11,7 @@ DECLARE_LLM_MEMORY_STAT(TEXT("LoadAnimTexture"), STAT_LoadAnimTexture_LLM, STATG
 DECLARE_LLM_MEMORY_STAT(TEXT("AnimTexture"), STAT_AnimTexture_LLM, STATGROUP_LLMFULL);
 DECLARE_LLM_MEMORY_STAT(TEXT("RHITexture"), STAT_RHITexture_LLM, STATGROUP_LLMFULL);
 DECLARE_LLM_MEMORY_STAT(TEXT("DecompressTexture"), STAT_DecompressTexture_LLM, STATGROUP_LLMFULL);
+DECLARE_LLM_MEMORY_STAT(TEXT("AnimInitRHITexture"), STAT_AnimInitRHITexture_LLM, STATGROUP_LLMFULL);
 
 void FAnimatedTextureModule::StartupModule()
 {
@@ -18,6 +19,7 @@ void FAnimatedTextureModule::StartupModule()
 	LLM(FLowLevelMemTracker::Get().RegisterProjectTag((int32)EAnimatedTextureLLMTag::AnimTexture, TEXT("AnimTexture"), GET_STATFNAME(STAT_AnimTexture_LLM), GET_STATFNAME(STAT_CustomGroupLLM), -1));
 	LLM(FLowLevelMemTracker::Get().RegisterProjectTag((int32)EAnimatedTextureLLMTag::RHITexture, TEXT("AnimRHITexture"), GET_STATFNAME(STAT_RHITexture_LLM), GET_STATFNAME(STAT_CustomGroupLLM), -1));
 	LLM(FLowLevelMemTracker::Get().RegisterProjectTag((int32)EAnimatedTextureLLMTag::DecompressTexture, TEXT("DecompressTexture"), GET_STATFNAME(STAT_DecompressTexture_LLM), GET_STATFNAME(STAT_CustomGroupLLM), -1));
+	LLM(FLowLevelMemTracker::Get().RegisterProjectTag((int32)EAnimatedTextureLLMTag::InitRHITexture, TEXT("AnimInitRHITexture"), GET_STATFNAME(STAT_AnimInitRHITexture_LLM), GET_STATFNAME(STAT_CustomGroupLLM), -1));
 }
 
 void FAnimatedTextureModule::ShutdownModule()

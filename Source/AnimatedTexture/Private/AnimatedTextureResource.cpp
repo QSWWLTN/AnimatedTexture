@@ -22,6 +22,12 @@ void FAnimatedTextureResource::InitRHI(
 #endif
 )
 {
+	LLM_SCOPE(ELLMTag((int)EAnimatedTextureLLMTag::InitRHITexture));
+	if (TextureRHI.IsValid()) {
+		return;
+	}
+
+	/*
 	CreateSamplerStates(
 		GetDefaultMipMapBias()
 	);
@@ -48,7 +54,6 @@ void FAnimatedTextureResource::InitRHI(
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, TextureRHI);
 
-	/*
 	if(Owner->GlobalHeight > 0 && Owner->GlobalWidth > 0)
 	{
 		DecodeFrameToRHI();
@@ -73,7 +78,7 @@ void FAnimatedTextureResource::ReleaseRHI()
 void FAnimatedTextureResource::Tick(float DeltaTime)
 {
 	float duration = FApp::GetCurrentTime() - Owner->GetLastRenderTimeForStreaming();
-	bool bShouldTick = /*Owner->bAlwaysTickEvenNoSee ||*/ duration < 2.5f;
+	bool bShouldTick = duration < 0.5f;
 
 	if(Owner && Owner->GlobalHeight >0 && Owner->GlobalWidth > 0 && bShouldTick)
 	{
@@ -180,9 +185,6 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 	}
 
 	bool FirstFrame = AnimState.CurrentFrame == 0;
-	FTexture2DRHIRef Texture2DRHI = TextureRHI->GetTexture2D();
-	if (!Texture2DRHI)
-		return;
 
 	FGIFFrame* GIFFrame = Owner->GetCacheFrame();
 	if (GIFFrame == nullptr || GIFFrame->PixelIndices == nullptr) {
@@ -194,9 +196,6 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 
 	FColor* PICT = FrameBuffer[InLastFrame].GetData();
 	uint32 InBackground = Owner->Background;
-
-	uint32 TexWidth = Texture2DRHI->GetSizeX();
-	uint32 TexHeight = Texture2DRHI->GetSizeY();
 
 	//-- decode to frame buffer
 	/*
@@ -275,6 +274,17 @@ void FAnimatedTextureResource::DecodeFrameToRHI()
 		}
 		FMemory::Free(LineBuff);
 	}
+
+	if (!TextureRHI.IsValid()) {
+		return;
+	}
+	FTexture2DRHIRef Texture2DRHI = TextureRHI->GetTexture2D();
+	if (!Texture2DRHI) {
+		return;
+	}
+
+	uint32 TexWidth = Texture2DRHI->GetSizeX();
+	uint32 TexHeight = Texture2DRHI->GetSizeY();
 
 	//-- write texture
 	uint32 DestPitch = 0;

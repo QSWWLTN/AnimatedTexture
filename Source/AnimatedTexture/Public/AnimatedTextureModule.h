@@ -26,7 +26,8 @@ enum class EAnimatedTextureLLMTag {
 	LoadAnimTexture,
 	AnimTexture,
 	RHITexture,
-	DecompressTexture
+	DecompressTexture,
+	InitRHITexture
 };
 
 class FAnimatedTextureModule : public IModuleInterface
